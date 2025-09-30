@@ -7,4 +7,9 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\ResonanceTools\ResonanceTools.HotfixParser\ResonanceTools.HotfixParser.csproj" />
+      <ProjectReference Include="..\ResonanceTools\ResonanceTools.JABParser\ResonanceTools.JABParser.csproj" />
+    </ItemGroup>
+
 </Project>
