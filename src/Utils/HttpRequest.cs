@@ -1,8 +1,10 @@
+using ResonanceTools.Utility;
+
 namespace ResonanceDownloader.Utils;
 
 public class HttpRequest
 {
-    private static readonly HttpClient client = new HttpClient();
+    private static readonly HttpClient Client = new HttpClient();
 
     public static bool DownloadFile(string url, string filePath, int maxRetries = 3)
     {
@@ -10,25 +12,48 @@ public class HttpRequest
         {
             try
             {
-                using var response = client.GetAsync(url).Result;
+                Log.Info($"Downloading {url} -> {filePath}");
+                using var response = Client.GetAsync(url).Result;
                 response.EnsureSuccessStatusCode();
 
                 using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
                 response.Content.CopyToAsync(fs).Wait();
-
-                Console.WriteLine($"Download succeeded on attempt {attempt}: {filePath}");
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Attempt {attempt} failed: {ex.Message}");
+                Log.Error($"Attempt {attempt} failed: {ex.Message}");
                 if (attempt == maxRetries)
                 {
-                    Console.WriteLine("All retry attempts failed.");
+                    Log.Warn("All retry attempts failed.");
                     return false;
                 }
             }
         }
         return false;
+    }
+    
+    public static void DownloadFilesParallel(
+        List<(string url, string filePath)> downloads, 
+        int maxDegreeOfParallelism = 4, 
+        int maxRetries = 3)
+    {
+        using var semaphore = new SemaphoreSlim(maxDegreeOfParallelism);
+        
+        Log.Info($"Start downloading {downloads.Count} files...");
+        var tasks = downloads.Select(async item =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                DownloadFile(item.url, item.filePath, maxRetries);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }).ToArray();
+
+        Task.WaitAll(tasks);
     }
 }

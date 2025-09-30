@@ -12,4 +12,8 @@
       <ProjectReference Include="..\ResonanceTools\ResonanceTools.JABParser\ResonanceTools.JABParser.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    </ItemGroup>
+
 </Project>
