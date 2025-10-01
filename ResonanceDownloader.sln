@@ -2,12 +2,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ResonanceDownloader", "src/ResonanceDownloader.csproj", "{53438A71-0AEB-4C85-AC9B-7E6E0A6CFD9B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ResonanceTools.HotfixParser", "ResonanceTools\ResonanceTools.HotfixParser\ResonanceTools.HotfixParser.csproj", "{8F03F20E-0CC5-49E6-BD48-CA1A6AB89704}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ResonanceTools.JABParser", "ResonanceTools\ResonanceTools.JABParser\ResonanceTools.JABParser.csproj", "{5A46DE2E-AA00-49A1-8178-55458F9A46CE}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ResonanceTools.Utility", "ResonanceTools\ResonanceTools.Utility\ResonanceTools.Utility.csproj", "{4F9B46CC-E607-45D7-8232-733A0387F188}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,17 +12,5 @@ Global
 		{53438A71-0AEB-4C85-AC9B-7E6E0A6CFD9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{53438A71-0AEB-4C85-AC9B-7E6E0A6CFD9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{53438A71-0AEB-4C85-AC9B-7E6E0A6CFD9B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8F03F20E-0CC5-49E6-BD48-CA1A6AB89704}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8F03F20E-0CC5-49E6-BD48-CA1A6AB89704}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8F03F20E-0CC5-49E6-BD48-CA1A6AB89704}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8F03F20E-0CC5-49E6-BD48-CA1A6AB89704}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5A46DE2E-AA00-49A1-8178-55458F9A46CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5A46DE2E-AA00-49A1-8178-55458F9A46CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5A46DE2E-AA00-49A1-8178-55458F9A46CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5A46DE2E-AA00-49A1-8178-55458F9A46CE}.Release|Any CPU.Build.0 = Release|Any CPU
-		{4F9B46CC-E607-45D7-8232-733A0387F188}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{4F9B46CC-E607-45D7-8232-733A0387F188}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{4F9B46CC-E607-45D7-8232-733A0387F188}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{4F9B46CC-E607-45D7-8232-733A0387F188}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

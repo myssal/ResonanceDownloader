@@ -8,13 +8,29 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\ResonanceTools\ResonanceTools.HotfixParser\ResonanceTools.HotfixParser.csproj" />
-      <ProjectReference Include="..\ResonanceTools\ResonanceTools.JABParser\ResonanceTools.JABParser.csproj" />
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+      <Reference Include="AssetStudio.CLI">
+        <HintPath>..\Libs\YarikStudio.CLI\AssetStudio.CLI.dll</HintPath>
+      </Reference>
+      <Reference Include="ResonanceTools.HotfixParser">
+        <HintPath>..\Libs\ResonanceTools\ResonanceTools.HotfixParser.dll</HintPath>
+      </Reference>
+      <Reference Include="ResonanceTools.JABParser">
+        <HintPath>..\Libs\ResonanceTools\ResonanceTools.JABParser.dll</HintPath>
+      </Reference>
+      <Reference Include="ResonanceTools.Utility">
+        <HintPath>..\Libs\ResonanceTools\ResonanceTools.Utility.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="filters_template.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 
 </Project>
