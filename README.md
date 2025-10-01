@@ -1,11 +1,26 @@
-<p align="center">
-  <h1><b>Resonance Downloader</b></h1>
+<div align="center">
+  <h1>Resonance Downloader</h1>
   <img src="/resources/header.png" alt="Header image" width="40%">
-</p>
+</div>
 
 Asset downloader for [Resonance Solstice](https://store.steampowered.com/app/3037160/Resonance_Solstice).
-## Usage:
 
+## Usage:
+```
+Description:
+  Resonance Solstice Assets Downloader
+
+Usage:
+  ResonanceDownloader <output> [options]
+
+Arguments:
+  <output>  Specify output folder for download contents.
+
+Options:
+  --game-version <game-version>  Specify game version. If not set, the version will be fetched from server.
+  --version                      Show version information
+  -?, -h, --help                 Show help and usage information
+```
 ## To do:
 - Assets extraction
 
