@@ -33,12 +33,14 @@ public class HttpRequest
         return false;
     }
     
-    public static void DownloadFilesParallel(
+    public static List<string> DownloadFilesParallel(
         List<(string url, string filePath)> downloads, 
         int maxDegreeOfParallelism = 4, 
         int maxRetries = 3)
     {
         using var semaphore = new SemaphoreSlim(maxDegreeOfParallelism);
+        var failedDownloads = new List<string>();
+        var downloadedCount = 0;
         
         Log.Info($"Start downloading {downloads.Count} files...");
         var tasks = downloads.Select(async item =>
@@ -46,7 +48,12 @@ public class HttpRequest
             await semaphore.WaitAsync();
             try
             {
-                DownloadFile(item.url, item.filePath, maxRetries);
+                if (!DownloadFile(item.url, item.filePath, maxRetries))
+                {
+                    failedDownloads.Add(item.url);
+                }
+
+                Interlocked.Increment(ref downloadedCount);
             }
             finally
             {
@@ -55,5 +62,6 @@ public class HttpRequest
         }).ToArray();
 
         Task.WaitAll(tasks);
+        return failedDownloads;
     }
 }

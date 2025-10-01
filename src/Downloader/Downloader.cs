@@ -210,7 +210,19 @@ public class Downloader
     public void DownloadAssets(List<(string, string)> downloadList)
     {
         Log.Info($"Downloading {downloadList.Count} assets...");
-        HttpRequest.DownloadFilesParallel(downloadList, 4, 3);
+        var failedDownloads = HttpRequest.DownloadFilesParallel(downloadList, 4, 3);
+
+        string progressFilePath = Path.Combine(outputDir, "metadata", "progress.txt");
+        using (StreamWriter writer = new StreamWriter(progressFilePath))
+        {
+            foreach (var (url, filePath) in downloadList)
+            {
+                string status = failedDownloads.Contains(url) ? "failed" : "downloaded";
+                writer.WriteLine($"{filePath}: {status}");
+            }
+        }
+
+        Log.Info($"Download progress saved to {progressFilePath}");
     }
     
 }
