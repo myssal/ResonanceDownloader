@@ -16,25 +16,40 @@ public class Downloader
     private CDNConfig cdnCfg { get; set; }
     private string outputDir { get; set; }
     private string version { get; set; }
+    private bool downloadCompressedJab { get; set; }
     private List<(string, string)> downloadList {get; set;}
     private DescManifest manifest { get; set; } = new();
     private PathConfig pathConfig { get; set; } = new();
     
-    public Downloader(string outputDir, string? version = null, string? filterFile = null, string? presetName = null)
+    public Downloader(string filterFile, bool downloadCompressedJab, string outputDir, string? version = null, string? presetName = null)
     {
-        DirectoryInfo directoryInfo = new DirectoryInfo(outputDir);
-        directoryInfo.Create();
-        this.outputDir = outputDir;
-
+        if (string.IsNullOrWhiteSpace(filterFile))
+            filterFile = "filters.json";
+        
+        string indexReleaseBTemp = "";
         if (string.IsNullOrEmpty(version))
         {
             Log.Info("No version is provided, fetching version...");
-            this.version = GetVersion();
+            (this.version, indexReleaseBTemp) = GetVersion();
         }
         else
         {
             this.version = version;
         }
+        
+        // set default folder to outputDir/version right here
+        string verDir = Path.Combine(outputDir, this.version);
+        DirectoryInfo directoryInfo = new DirectoryInfo(verDir);
+        directoryInfo.Create();
+        this.outputDir = verDir;
+        Directories.Clear(this.outputDir);
+        if (!string.IsNullOrEmpty(indexReleaseBTemp))
+        {
+            string metadataPath = Path.Combine(this.outputDir, "metadata");
+            Directory.CreateDirectory(metadataPath);
+            File.Move(indexReleaseBTemp, $"{metadataPath}/index_ReleaseB.txt", true);
+        }
+            
 
         cdnCfg = new CDNConfig(baseUrl, region, platform, this.version);
 
@@ -57,6 +72,8 @@ public class Downloader
                 pathConfig = pathPresets.Get(firstPreset);
             }
         }
+        
+        this.downloadCompressedJab = downloadCompressedJab;
 
         LogInfo();
     }
@@ -65,10 +82,11 @@ public class Downloader
     {
         DumpHotFixBin();
         ParseManifest(Path.Combine(outputDir, "metadata", "desc.json"));
-        downloadList = GetDownloadFileList(pathConfig.Includes, pathConfig.Excludes);
+        downloadList = GetDownloadFileList(pathConfig.Includes, pathConfig.Excludes, downloadCompressedJab);
         Directories.CreateDownloadSubFolder(downloadList);
         DownloadAssets(downloadList);
         JabToBundle();
+        ExtractAsset();
     }
     
     /// <summary>
@@ -98,7 +116,11 @@ public class Downloader
         bool sucess = HttpRequest.DownloadFile(hotfixBin, $"{metadata.FullName}/desc.bin");
 
         if (sucess)
+        {
             HotfixParser.HotfixWrap($"{metadata.FullName}/desc.bin", $"{metadata.FullName}/desc.json");
+            File.Delete($"{metadata.FullName}/desc.bin");
+        }
+            
         else
         {
             Log.Warn($"Failed to get hotfix binary from {hotfixBin}");
@@ -106,30 +128,26 @@ public class Downloader
     }
     
     /// <summary>
-    /// Fetching game version
+    /// Get current game version
     /// </summary>
-    /// <returns>patch version</returns>
-    public string GetVersion()
+    /// <returns>game version & temp indexReleaseB path</returns>
+    public (string, string) GetVersion()
     {
         string indexUrl = indexReleaseB;
-        DirectoryInfo metadata = new DirectoryInfo(Path.Combine(outputDir, "metadata"));
-        metadata.Create();
-        string indexFilePath = Path.Combine(metadata.FullName, "index_ReleaseB.txt");
+        string tempIndexReleaseB = Path.GetTempFileName();
         string version = "";
 
         Log.Info($"Downloading index file from {indexUrl}");
 
-        bool sucess = HttpRequest.DownloadFile(indexUrl, indexFilePath);
+        bool sucess = HttpRequest.DownloadFile(indexUrl, tempIndexReleaseB);
 
         if (sucess)
         {
-            string content = File.ReadAllText(indexFilePath);
+            string content = File.ReadAllText(tempIndexReleaseB);
             string[] parts = content.Split(',');
             version = parts[5].Trim();
         }
-
-        File.Delete(indexFilePath);
-        return version;
+        return (version, tempIndexReleaseB);
     }
     
     /// <summary>
@@ -148,28 +166,34 @@ public class Downloader
         }
     }
     /// <summary>
-    /// Get assets list to download, based on exclude and include filter. Compressjabs are included by default.
+    /// Get assets list to download, based on exclude and include filter. Compressjabs are not included by default.
     /// </summary>
     /// <param name="includes">only filter asset contains these keywords</param>
     /// <param name="excludes">only filter asset not contains these keywords</param>
+    /// <param name="downloadCompressedJab">download compressed jab files or not</param>
     /// <returns>a list of download url and local relative path</returns>
-    public List<(string, string)> GetDownloadFileList(List<string> includes, List<string> excludes)
+    public List<(string, string)> GetDownloadFileList(List<string> includes, List<string> excludes, bool downloadCompressedJab)
     {
         List<(string, string)> downloadList = new();
-        DirectoryInfo rawDir = new DirectoryInfo(Path.Combine(outputDir, version));
+        DirectoryInfo rawDir = new DirectoryInfo(Path.Combine(outputDir, "bundles"));
         rawDir.Create();
 
         if (manifest.CompressedJabNames.Count == 0 && manifest.Files.Count == 0)
             Log.Warn("Manifest is empty, please parse the manifest first.");
         else
         {
-            Log.Info("Adding compressed jab entries...");
-            foreach (var compressedJab in manifest.CompressedJabNames)
+            if (downloadCompressedJab)
             {
-                string url = $"{cdnCfg.GetBaseUrl()}/{compressedJab}";
-                string localPath = Path.Combine(rawDir.FullName, "jab", compressedJab);
-                downloadList.Add((url, localPath));
+                Log.Info("Adding compressed jab entries...");
+                foreach (var compressedJab in manifest.CompressedJabNames)
+                {
+                    string url = $"{cdnCfg.GetBaseUrl()}/{compressedJab}";
+                    string localPath = Path.Combine(rawDir.FullName, "jab", compressedJab);
+                    downloadList.Add((url, localPath));
+                }
             }
+            else
+                Log.Info("Skipping download compressed jabs.");
 
             Log.Info("Filter asset list...");
             int assetCount = 0;
@@ -184,7 +208,7 @@ public class Downloader
                 if (include && !exclude)
                 {
                     string url = $"{cdnCfg.GetBaseUrl()}/{path}";
-                    string localPath = Path.Combine(rawDir.FullName, path);
+                    string localPath = Path.Combine(rawDir.FullName, "raw", path);
                     downloadList.Add((url, localPath));
                     assetCount++;
                 }
@@ -225,8 +249,8 @@ public class Downloader
     /// <param name="bufferSize"></param>
     public void JabToBundle(string jabFolder = "", string extractOutput = "", string bufferSize = "")
     {
-        string expectJabFolder = Path.Combine(outputDir, version, "jab");
-        DirectoryInfo tempExtract = new DirectoryInfo(Path.Combine(outputDir, version, "Data"));
+        string expectJabFolder = Path.Combine(outputDir, "bundles", "jab");
+        
         if (string.IsNullOrEmpty(jabFolder))
         {
             
@@ -238,11 +262,12 @@ public class Downloader
             
             jabFolder = expectJabFolder;
         }
-
+        
+        DirectoryInfo rawExtract = new DirectoryInfo(Path.Combine(outputDir, "bundles", "raw"));
         if (string.IsNullOrEmpty(extractOutput))
         {
-            tempExtract.Create();
-            extractOutput = tempExtract.FullName;
+            rawExtract.Create();
+            extractOutput = rawExtract.FullName;
         }
             
         string[] args = new[]
@@ -254,21 +279,44 @@ public class Downloader
         
         JabParser.JabParseWrap(args);
     }
-
-    public void ExtractAsset(string inputPath, string outputPath, List<string> types, AssetGroupOption option = AssetGroupOption.ByContainer, 
+    
+    /// <summary>
+    /// Extract raw bundles
+    /// </summary>
+    /// <param name="inputPath">specify raw bundles path</param>
+    /// <param name="outputPath">specify extract assets path</param>
+    /// <param name="types">specify asset types to export</param>
+    /// <param name="option">specify assets group option: ByType, ByContainer, BySource or None.</param>
+    /// <param name="keyIndex">unitycn key index in asset studio keys.json file</param>
+    public void ExtractAsset(string inputPath = "", string outputPath = "", List<string>? types = null, AssetGroupOption option = AssetGroupOption.ByContainer, 
         int keyIndex = 14)
     {
-        string[] args = new[]
+        // set default values
+        if (string.IsNullOrEmpty(inputPath)) inputPath = Path.Combine(outputDir, "bundles", "raw");
+        if (string.IsNullOrEmpty(outputPath)) outputPath = Path.Combine(outputDir, "extracted");
+        types ??= new List<string>
+        {
+            "TextAsset",
+            "Texture2D",
+            "VideoClip"
+        };
+
+        var args = new List<string>
         {
             inputPath,
             outputPath,
-            "--types", string.Join(" ", types),
             "--game", "UnityCN",
             "--key_index", keyIndex.ToString(),
-            "--group_assets", option.ToString()
+            "--group_assets", option.ToString() 
         };
         
-        StudioCLI.Main(args);
+        if (types.Count > 0)
+        {
+            args.Add("--types");
+            args.AddRange(types);
+        }
+        
+        StudioCLI.Main(args.ToArray());
     }
     
     public enum AssetGroupOption

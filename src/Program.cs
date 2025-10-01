@@ -15,10 +15,13 @@ class Program
             Arity = ArgumentArity.ZeroOrOne
         };
         filterFileOption.AddAlias("-f");
-        filterFileOption.SetDefaultValue("filters.json");
         
         var presetNameOption = new Option<string>("--preset", "Specify which preset filter to use from filter file. Only valid if --filter-file or -f is specified.");
         presetNameOption.AddAlias("-p");
+        
+        var downloadCompressedJabOption = new Option<bool>("--download-compressed-jab", "Download compressed jab files instead of extracted asset bundles.");
+        downloadCompressedJabOption.AddAlias("-cjab");
+        downloadCompressedJabOption.SetDefaultValue(false);
 
         // Root command
         var rootCommand = new RootCommand("Resonance Solstice Assets Downloader");
@@ -26,12 +29,13 @@ class Program
         rootCommand.AddOption(versionOption);
         rootCommand.AddOption(filterFileOption);
         rootCommand.AddOption(presetNameOption);
+        rootCommand.AddOption(downloadCompressedJabOption);
 
-        rootCommand.SetHandler((output, version, filterFile, presetName) =>
+        rootCommand.SetHandler((output, version, filterFile, presetName, downloadCompressedJab) =>
         {
-            var downloader = new Downloader.Downloader(output, version, filterFile, presetName);
+            var downloader = new Downloader.Downloader(filterFile, downloadCompressedJab, output, version, presetName);
             downloader.AssetDownload();
-        }, outputPathArg, versionOption, filterFileOption, presetNameOption);
+        }, outputPathArg, versionOption, filterFileOption, presetNameOption, downloadCompressedJabOption);
 
         await rootCommand.InvokeAsync(args);
     }

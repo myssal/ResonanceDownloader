@@ -21,4 +21,28 @@ public class Directories
             createdDirs.Add(dir);
         }
     }
+    
+    /// <summary>
+    /// Clears all files and subfolders in the specified directory.
+    /// </summary>
+    /// <param name="path">The directory to clear.</param>
+    public static void Clear(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("Path cannot be null or empty.", nameof(path));
+
+        if (!Directory.Exists(path))
+            throw new DirectoryNotFoundException($"The directory '{path}' does not exist.");
+        
+        foreach (string file in Directory.GetFiles(path))
+        {
+            File.SetAttributes(file, FileAttributes.Normal);
+            File.Delete(file);
+        }
+        
+        foreach (string dir in Directory.GetDirectories(path))
+        {
+            Directory.Delete(dir, true); 
+        }
+    }
 }
