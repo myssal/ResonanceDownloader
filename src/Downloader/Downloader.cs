@@ -11,7 +11,7 @@ public class Downloader
     private string baseUrl = "http://eden-resource-volc.gameduchy.com";
     private string region = "CN";
     private string platform = "StandaloneWindows64";
-    private List<string> includes = new List<string>
+    private List<string> includes = new()
     {
         "/enemy/",
         "/enemyplus/",
@@ -32,7 +32,7 @@ public class Downloader
         "/video/",
         "/weather/"
     };
-    private List<string> excludes = new List<string>
+    private List<string> excludes = new()
     {
         "3d",
         "model",
