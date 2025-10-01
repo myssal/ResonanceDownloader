@@ -3,6 +3,7 @@ using ResonanceDownloader.Utils;
 using ResonanceTools.Utility;
 using HotfixParser = ResonanceTools.HotfixParser.Program;
 using JabParser = ResonanceTools.JABParser.Program;
+using StudioCLI = AssetStudio.CLI.Program;
 namespace ResonanceDownloader.Downloader;
 
 public class Downloader
@@ -11,62 +12,51 @@ public class Downloader
     private string baseUrl = "http://eden-resource-volc.gameduchy.com";
     private string region = "CN";
     private string platform = "StandaloneWindows64";
-    private List<string> includes = new()
-    {
-        "/enemy/",
-        "/enemyplus/",
-        "/environment/env_ui",
-        "/environment/rn_scenes",
-        "/home/",
-        "/item/",
-        "/kabaneri/",
-        "/npc/",
-        "/originpack/",
-        "/role/",
-        "/roleplus/",
-        "/spine/",
-        "/story/",
-        "/texticon/",
-        "/timeline/",
-        "/ui/",
-        "/video/",
-        "/weather/"
-    };
-    private List<string> excludes = new()
-    {
-        "3d",
-        "model",
-        "commoneffect"
-    };
-    
     
     private CDNConfig cdnCfg { get; set; }
     private string outputDir { get; set; }
     private string version { get; set; }
     private List<(string, string)> downloadList {get; set;}
     private DescManifest manifest { get; set; } = new();
-
-    public Downloader(string version, string outputDir)
+    private PathConfig pathConfig { get; set; } = new();
+    
+    public Downloader(string outputDir, string? version = null, string? filterFile = null, string? presetName = null)
     {
-        this.version = version;
-        cdnCfg = new CDNConfig(baseUrl, region, platform, version);
         DirectoryInfo directoryInfo = new DirectoryInfo(outputDir);
         directoryInfo.Create();
         this.outputDir = outputDir;
 
-        LogInfo();
+        if (string.IsNullOrEmpty(version))
+        {
+            Log.Info("No version is provided, fetching version...");
+            this.version = GetVersion();
+        }
+        else
+        {
+            this.version = version;
+        }
 
-    }
+        cdnCfg = new CDNConfig(baseUrl, region, platform, this.version);
 
-    public Downloader(string outputDir)
-    {
-        Log.Info("No version is provided, fetching version...");
-
-        DirectoryInfo directoryInfo = new DirectoryInfo(outputDir);
-        directoryInfo.Create();
-        this.outputDir = outputDir;
-        version = GetVersion();
-        cdnCfg = new CDNConfig(baseUrl, region, platform, version);
+        if (!string.IsNullOrEmpty(filterFile))
+        {
+            string path = filterFile;
+            PathPresets pathPresets = new PathPresets();
+            pathPresets.Load(path);
+            Log.Info($"Loaded filter presets from: {path}");
+            if (!string.IsNullOrEmpty(presetName))
+            {
+                Log.Info($"Loaded preset filter: {presetName}");
+                pathConfig = pathPresets.Get(presetName);
+            }
+            else
+            {
+                Log.Info($"No preset filter match: {path}, load first preset in file...");
+                string firstPreset = pathPresets.AvailablePresets.FirstOrDefault() ?? "";
+                Log.Info($"Using {firstPreset}");
+                pathConfig = pathPresets.Get(firstPreset);
+            }
+        }
 
         LogInfo();
     }
@@ -75,7 +65,7 @@ public class Downloader
     {
         DumpHotFixBin();
         ParseManifest(Path.Combine(outputDir, "metadata", "desc.json"));
-        downloadList = GetDownloadFileList(includes, excludes);
+        downloadList = GetDownloadFileList(pathConfig.Includes, pathConfig.Excludes);
         Directories.CreateDownloadSubFolder(downloadList);
         DownloadAssets(downloadList);
         JabToBundle();
@@ -86,7 +76,7 @@ public class Downloader
     /// </summary>
     public void LogInfo()
     {
-        Log.Info("Fetching CDN configuration...");
+        Log.Info("CDN configuration");
         Log.Info($"Base url: {baseUrl}");
         Log.Info($"Region: {region}");
         Log.Info($"Platform: {platform}");
@@ -127,7 +117,7 @@ public class Downloader
         string indexFilePath = Path.Combine(metadata.FullName, "index_ReleaseB.txt");
         string version = "";
 
-        Console.WriteLine($"Downloading index file from {indexUrl}");
+        Log.Info($"Downloading index file from {indexUrl}");
 
         bool sucess = HttpRequest.DownloadFile(indexUrl, indexFilePath);
 
@@ -263,8 +253,30 @@ public class Downloader
         };
         
         JabParser.JabParseWrap(args);
+    }
+
+    public void ExtractAsset(string inputPath, string outputPath, List<string> types, AssetGroupOption option = AssetGroupOption.ByContainer, 
+        int keyIndex = 14)
+    {
+        string[] args = new[]
+        {
+            inputPath,
+            outputPath,
+            "--types", string.Join(" ", types),
+            "--game", "UnityCN",
+            "--key_index", keyIndex.ToString(),
+            "--group_assets", option.ToString()
+        };
         
-        
+        StudioCLI.Main(args);
+    }
+    
+    public enum AssetGroupOption
+    {
+        ByType,
+        ByContainer,
+        BySource,
+        None
     }
 }
 
