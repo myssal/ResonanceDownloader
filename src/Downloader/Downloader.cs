@@ -1,7 +1,8 @@
 using Newtonsoft.Json;
 using ResonanceDownloader.Utils;
 using ResonanceTools.Utility;
-using static ResonanceTools.HotfixParser.Program;
+using HotfixParser = ResonanceTools.HotfixParser.Program;
+using JabParser = ResonanceTools.JABParser.Program;
 namespace ResonanceDownloader.Downloader;
 
 public class Downloader
@@ -77,6 +78,7 @@ public class Downloader
         downloadList = GetDownloadFileList(includes, excludes);
         Directories.CreateDownloadSubFolder(downloadList);
         DownloadAssets(downloadList);
+        JabToBundle();
     }
     
     /// <summary>
@@ -106,7 +108,7 @@ public class Downloader
         bool sucess = HttpRequest.DownloadFile(hotfixBin, $"{metadata.FullName}/desc.bin");
 
         if (sucess)
-            HotfixWrap($"{metadata.FullName}/desc.bin", $"{metadata.FullName}/desc.json");
+            HotfixParser.HotfixWrap($"{metadata.FullName}/desc.bin", $"{metadata.FullName}/desc.json");
         else
         {
             Log.Warn($"Failed to get hotfix binary from {hotfixBin}");
@@ -224,6 +226,45 @@ public class Downloader
 
         Log.Info($"Download progress saved to {progressFilePath}");
     }
-    
+
+    /// <summary>
+    /// Parse asset bundle from jab files
+    /// </summary>
+    /// <param name="jabFolder">Jab folder path</param>
+    /// <param name="extractOutput">Extracted asset bundles output path</param>
+    /// <param name="bufferSize"></param>
+    public void JabToBundle(string jabFolder = "", string extractOutput = "", string bufferSize = "")
+    {
+        string expectJabFolder = Path.Combine(outputDir, version, "jab");
+        DirectoryInfo tempExtract = new DirectoryInfo(Path.Combine(outputDir, version, "Data"));
+        if (string.IsNullOrEmpty(jabFolder))
+        {
+            
+            if (!Directory.Exists(expectJabFolder))
+            {
+                Log.Warn($"JAB folder not specified and default path {expectJabFolder} does not exist.");
+                return;
+            }
+            
+            jabFolder = expectJabFolder;
+        }
+
+        if (string.IsNullOrEmpty(extractOutput))
+        {
+            tempExtract.Create();
+            extractOutput = tempExtract.FullName;
+        }
+            
+        string[] args = new[]
+        {
+            jabFolder,
+            "--extract", extractOutput,
+            "--buffer", string.IsNullOrEmpty(bufferSize) ? "262144" : bufferSize
+        };
+        
+        JabParser.JabParseWrap(args);
+        
+        
+    }
 }
 
