@@ -58,7 +58,7 @@ public class Downloader
         }
             
 
-        cdnCfg = new CDNConfig(baseUrl, region, platform, this.version);
+        cdnCfg = new CDNConfig(baseUrl, this.region, this.platform, this.version);
 
         if (!string.IsNullOrEmpty(filterFile))
         {
