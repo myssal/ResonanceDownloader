@@ -14,7 +14,7 @@ Usage:
   ResonanceDownloader [options]
 
 Options:
-  output, -o <output>                 Specify output folder for download contents.
+  -o, --output <output>               Specify output folder for download contents.
   -gv, --game-version <game-version>  Specify game version. If not set, the version will be fetched from server.
   -f, --filter-file <filter-file>     Specify filter json file path. If specify with no input, default input will be
                                       filters.json.

@@ -7,7 +7,7 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        var outputPathOption = new Option<string>("output", "Specify output folder for download contents.");
+        var outputPathOption = new Option<string>("--output", "Specify output folder for download contents.");
         outputPathOption.AddAlias("-o");
 
         var versionOption = new Option<string>("--game-version",
