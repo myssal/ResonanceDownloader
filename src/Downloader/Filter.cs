@@ -9,6 +9,17 @@ public class PathConfig
 
     [JsonProperty("excludes")]
     public List<string> Excludes { get; init; } = new();
+
+    public PathConfig()
+    {
+        
+    }
+
+    public PathConfig(List<string> includes, List<string> excludes)
+    {
+        Includes = includes;
+        Excludes = excludes;
+    }
 }
 
 public class PathPresets

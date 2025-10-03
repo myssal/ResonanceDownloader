@@ -8,37 +8,44 @@ namespace ResonanceDownloader.Downloader;
 
 public class Downloader
 {
-    private const string indexReleaseB = "https://eden-index.gameduchy.com/index_ReleaseB.txt";
-    private string baseUrl = "http://eden-resource-volc.gameduchy.com";
-    private string region = "CN";
-    private string platform = "StandaloneWindows64";
-    
     private CDNConfig cdnCfg { get; set; }
-    private string outputDir { get; set; }
+    private string baseUrl = "";
+    private string region = "";
+    private string platform = "";
     private string version { get; set; }
+    private string outputDir { get; set; } = "";
     private bool downloadCompressedJab { get; set; }
     private List<(string, string)> downloadList {get; set;}
     private DescManifest manifest { get; set; } = new();
-    private PathConfig pathConfig { get; set; } = new();
+    private PathConfig pathConfig { get; set; } = new(new List<string>(), new List<string>());
     
-    public Downloader(string filterFile, bool downloadCompressedJab, string outputDir, string? version = null, string? presetName = null)
+    public Downloader(string filterFile, bool downloadCompressedJab, string? outputDir = null, string? version = null, 
+        string? presetName = null, string? region = null, string? platform = null)
     {
         if (string.IsNullOrWhiteSpace(filterFile))
             filterFile = "filters.json";
         
         string indexReleaseBTemp = "";
+        this.platform = platform;
+        this.region = region;
+
         if (string.IsNullOrEmpty(version))
         {
             Log.Info("No version is provided, fetching version...");
-            (this.version, indexReleaseBTemp) = GetVersion();
+            indexReleaseBTemp = GetConfig(this.region, this.platform);
         }
         else
         {
-            this.version = version;
+            Log.Info($"Set version to {version}, fetching config...");
+            indexReleaseBTemp = GetConfig(this.region, this.platform, version);
         }
         
+        
         // set default folder to outputDir/version right here
-        string verDir = Path.Combine(outputDir, this.version);
+        if (string.IsNullOrWhiteSpace(outputDir))
+            outputDir = Directory.GetCurrentDirectory();
+        
+        string verDir = Path.Combine(outputDir, "download", $"{this.region}_{this.platform}",this.version);
         DirectoryInfo directoryInfo = new DirectoryInfo(verDir);
         directoryInfo.Create();
         this.outputDir = verDir;
@@ -58,18 +65,23 @@ public class Downloader
             string path = filterFile;
             PathPresets pathPresets = new PathPresets();
             pathPresets.Load(path);
-            Log.Info($"Loaded filter presets from: {path}");
+            Log.Info($"Loading filter presets from: {path}");
             if (!string.IsNullOrEmpty(presetName))
             {
-                Log.Info($"Loaded preset filter: {presetName}");
+                Log.Info($"Preset filter loaded: {presetName}");
                 pathConfig = pathPresets.Get(presetName);
             }
             else
             {
                 Log.Info($"No preset filter match: {path}, load first preset in file...");
                 string firstPreset = pathPresets.AvailablePresets.FirstOrDefault() ?? "";
-                Log.Info($"Using {firstPreset}");
-                pathConfig = pathPresets.Get(firstPreset);
+                if (firstPreset != "")
+                {
+                    Log.Info($"Preset filter loaded: {firstPreset}");
+                    pathConfig = pathPresets.Get(firstPreset);
+                }
+                else
+                    Log.Info($"No preset found in {path}, using empty filter.");
             }
         }
         
@@ -92,7 +104,7 @@ public class Downloader
     /// <summary>
     /// Log basic info 
     /// </summary>
-    public void LogInfo()
+    private void LogInfo()
     {
         Log.Info("CDN configuration");
         Log.Info($"Base url: {baseUrl}");
@@ -104,7 +116,7 @@ public class Downloader
     /// <summary>
     /// Fetch and dump desc.bin from hotfix server
     /// </summary>
-    public void DumpHotFixBin()
+    private void DumpHotFixBin()
     {
         DirectoryInfo metadata = new DirectoryInfo(Path.Combine(outputDir, "metadata"));
         metadata.Create();
@@ -113,9 +125,9 @@ public class Downloader
         Log.Info("Downloading hotfix...");
         Log.Info($"Getting hotfix binary from {hotfixBin}");
 
-        bool sucess = HttpRequest.DownloadFile(hotfixBin, $"{metadata.FullName}/desc.bin");
+        bool success = HttpRequest.DownloadFile(hotfixBin, $"{metadata.FullName}/desc.bin");
 
-        if (sucess)
+        if (success)
         {
             HotfixParser.HotfixWrap($"{metadata.FullName}/desc.bin", $"{metadata.FullName}/desc.json");
             File.Delete($"{metadata.FullName}/desc.bin");
@@ -128,33 +140,74 @@ public class Downloader
     }
     
     /// <summary>
-    /// Get current game version
+    /// Return cdn config based on input
     /// </summary>
-    /// <returns>game version & temp indexReleaseB path</returns>
-    public (string, string) GetVersion()
+    /// <param name="currentRegion">Game region to fetch config from</param>
+    /// <param name="platform">Game platform</param>
+    /// <param name="iversion">Game version</param>
+    /// <returns>Temp location of index release file.</returns>
+    private string GetConfig(string currentRegion, string platform, string? iversion = null)
     {
-        string indexUrl = indexReleaseB;
+        
+        string indexUrl = IndexUrls.GetIndexUrl(currentRegion);
         string tempIndexReleaseB = Path.GetTempFileName();
-        string version = "";
-
+        Platform pplatform = EnumParser.ParsePlatform(platform);
+        
         Log.Info($"Downloading index file from {indexUrl}");
-
-        bool sucess = HttpRequest.DownloadFile(indexUrl, tempIndexReleaseB);
-
-        if (sucess)
+        bool success = HttpRequest.DownloadFile(indexUrl, tempIndexReleaseB);
+        
+        if (success)
         {
-            string content = File.ReadAllText(tempIndexReleaseB);
-            string[] parts = content.Split(',');
-            version = parts[5].Trim();
+            CDNInfo matchedCdnInfo = new CDNInfo();
+            Log.Info($"Processing cdn info...");
+            var cdnContent = File.ReadAllLines(tempIndexReleaseB);
+            IndexReleaseInfo idxRelease = new IndexReleaseInfo(cdnContent);
+            
+            // filter index that matches the platform
+            var matchedCdn = idxRelease.cdnInfos.Where(x => x.platform == pplatform);
+            
+            // filter based on version if provided else get highest version of the platform
+            if (!string.IsNullOrEmpty(iversion))
+            {
+                var versionedCdn = matchedCdn.Where(x => x.currentVersion == iversion).FirstOrDefault();
+                if (versionedCdn != null)
+                {
+                    matchedCdnInfo = versionedCdn;
+                }
+            }
+            else
+            {
+                // pick highest version
+                matchedCdnInfo = matchedCdn
+                    .Where(x => EnumParser.ParseVersion(x.currentVersion, out _))   // only valid versions
+                    .OrderByDescending(x =>
+                    {
+                        EnumParser.ParseVersion(x.currentVersion, out var v);
+                        return v;
+                    })
+                    .FirstOrDefault();
+            }
+            
+            if (matchedCdnInfo != null)
+            {
+                baseUrl = matchedCdnInfo.baseUrl;
+                region = matchedCdnInfo.server.ToString();
+                this.platform = platform;
+                version = matchedCdnInfo.currentVersion;
+            }
+            else
+            {
+                Log.Warn($"No matching cdn info found for platform {platform} and version {iversion}");
+            }
         }
-        return (version, tempIndexReleaseB);
+        return tempIndexReleaseB;
     }
     
     /// <summary>
     /// Parsing desc.json to get manifest
     /// </summary>
     /// <param name="manifestJson">Path to dumped desc.json</param>
-    public void ParseManifest(string manifestJson)
+    private void ParseManifest(string manifestJson)
     {
         if (!File.Exists(manifestJson))
             Log.Warn($"Manifest file {manifestJson} not found.");
@@ -166,18 +219,19 @@ public class Downloader
         }
     }
     /// <summary>
-    /// Get assets list to download, based on exclude and include filter. Compressjabs are not included by default.
+    /// Get assets list to download, based on exclude and include filter. Compressed jabs are not included by default.
     /// </summary>
     /// <param name="includes">only filter asset contains these keywords</param>
     /// <param name="excludes">only filter asset not contains these keywords</param>
     /// <param name="downloadCompressedJab">download compressed jab files or not</param>
     /// <returns>a list of download url and local relative path</returns>
-    public List<(string, string)> GetDownloadFileList(List<string> includes, List<string> excludes, bool downloadCompressedJab)
+    private List<(string, string)> GetDownloadFileList(List<string> includes, List<string> excludes, bool 
+        downloadCompressedJab)
     {
         List<(string, string)> downloadList = new();
         DirectoryInfo rawDir = new DirectoryInfo(Path.Combine(outputDir, "bundles"));
         rawDir.Create();
-
+        
         if (manifest.CompressedJabNames.Count == 0 && manifest.Files.Count == 0)
             Log.Warn("Manifest is empty, please parse the manifest first.");
         else
@@ -223,7 +277,7 @@ public class Downloader
     /// Download assets from given download list
     /// </summary>
     /// <param name="downloadList"></param>
-    public void DownloadAssets(List<(string, string)> downloadList)
+    private void DownloadAssets(List<(string, string)> downloadList)
     {
         Log.Info($"Downloading {downloadList.Count} assets...");
         var failedDownloads = HttpRequest.DownloadFilesParallel(downloadList, 4, 3);
@@ -247,7 +301,7 @@ public class Downloader
     /// <param name="jabFolder">Jab folder path</param>
     /// <param name="extractOutput">Extracted asset bundles output path</param>
     /// <param name="bufferSize"></param>
-    public void JabToBundle(string jabFolder = "", string extractOutput = "", string bufferSize = "")
+    private void JabToBundle(string jabFolder = "", string extractOutput = "", string bufferSize = "")
     {
         string expectJabFolder = Path.Combine(outputDir, "bundles", "jab");
         
@@ -287,9 +341,10 @@ public class Downloader
     /// <param name="outputPath">specify extract assets path</param>
     /// <param name="types">specify asset types to export</param>
     /// <param name="option">specify assets group option: ByType, ByContainer, BySource or None.</param>
-    /// <param name="keyIndex">unitycn key index in asset studio keys.json file</param>
-    public void ExtractAsset(string inputPath = "", string outputPath = "", List<string>? types = null, AssetGroupOption option = AssetGroupOption.ByContainer, 
-        int keyIndex = 14)
+    /// <param name="keyIndex">unity cn key index in asset studio keys.json file</param>
+    private void ExtractAsset(string inputPath = "", string outputPath = "", List<string>? types = null, 
+        AssetGroupOption option = AssetGroupOption.ByContainer, 
+        int keyIndex = 0)
     {
         // set default values
         if (string.IsNullOrEmpty(inputPath)) inputPath = Path.Combine(outputDir, "bundles", "raw");
@@ -319,7 +374,7 @@ public class Downloader
         StudioCLI.Main(args.ToArray());
     }
     
-    public enum AssetGroupOption
+    private enum AssetGroupOption
     {
         ByType,
         ByContainer,
