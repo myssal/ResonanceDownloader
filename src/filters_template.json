@@ -1,0 +1,18 @@
+{
+  "Preset1": {
+    "includes": [
+      "include pattern for asset searching."
+    ],
+    "excludes": [
+      "exclude pattern for asset searching."
+    ]
+  },
+  "Preset2": {
+    "includes": [
+      "include pattern for asset searching."
+    ],
+    "excludes": [
+      "exclude pattern for asset searching."
+    ]
+  }
+}
