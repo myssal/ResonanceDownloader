@@ -6,88 +6,98 @@ public partial class Downloader
 {
     public CDNConfig GetPreviousConfig(string previousVersion = "")
     {
+        // just use base version bruh
         // must be called only after GetConfig() for full necessary data parsing first
         if (string.IsNullOrWhiteSpace(version) || matchedCDNInfos.Count == 0)
         {
-            Log.Info("No version specified or cdn info list found, skipping previous version parsing.");
-            return new CDNConfig(); 
+            Log.Error("GetPreviousConfig() called before GetConfig() or version not set. Skipping previous version parsing.");
+            return CDNConfig.Invalid("Missing version or empty CDN list");
         }
 
         CDNConfig prevConfig = new CDNConfig();
-        // parse info for specified previous version or just get second lastest version from indexReleaseB
+
         if (!string.IsNullOrWhiteSpace(previousVersion))
         {
-            var prevCDNInfo = matchedCDNInfos
+            var prevCDNInfos = matchedCDNInfos
                 .FirstOrDefault(x => x.currentVersion == previousVersion);
 
-            if (prevCDNInfo == null)
+            if (prevCDNInfos == null)
             {
                 Log.Warn($"No config found for {previousVersion}, skipping previous version parsing.");
-                return prevConfig;
+                return CDNConfig.Invalid($"No config found for version {previousVersion}");
             }
-            
+
             Log.Info($"Found previous version {previousVersion}");
-            prevConfig.baseIndex = prevCDNInfo.baseUrl;
-            prevConfig.region = prevCDNInfo.server.ToString();
-            prevConfig.platform = prevCDNInfo.platform.ToString();
-            prevConfig.version = previousVersion;
+            return FromCDNInfo(prevCDNInfos);
+        }
+
+        var validInfos = matchedCDNInfos
+            .Where(x => !string.IsNullOrWhiteSpace(x.currentVersion) &&
+                        Version.TryParse(x.currentVersion, out _))
+            .ToList();
+
+        if (validInfos.Count == 0)
+        {
+            Log.Warn("No valid version strings found in CDN info list.");
+            return CDNConfig.Invalid("No valid versions in CDN info list");
+        }
+
+        var sorted = validInfos
+            .OrderByDescending(x => Version.Parse(x.currentVersion))
+            .ToList();
+
+        int currentIndex = sorted.FindIndex(x => x.currentVersion == version);
+        if (currentIndex == -1)
+        {
+            Log.Warn($"Current version {version} not found in CDN list.");
+            return CDNConfig.Invalid($"Version {version} not in CDN list");
+        }
+
+
+        CDNInfo? prevCDNInfo = null;
+        if (currentIndex >= 0 && currentIndex < sorted.Count - 1)
+        {
+            prevCDNInfo = sorted[currentIndex + 1];
         }
         else
         {
-            // automatically detect previous version, use base version if no previous version found
-            var sorted = matchedCDNInfos
-                .OrderByDescending(x =>
-                {
-                    if (Version.TryParse(x.currentVersion, out var ver))
-                        return ver;
-                    return new Version(0, 0, 0);
-                })
-                .ToList();
-
-            // 2. find current version in sorted list
-            int currentIndex = sorted.FindIndex(x => x.currentVersion == version);
-
-            CDNInfo? prevCDNInfo = null;
-
-            if (currentIndex == -1) return prevConfig;
-            
-            if (currentIndex >= 0 && currentIndex < sorted.Count - 1)
-            {
-                // next one in descending list is the previous version
-                prevCDNInfo = sorted[currentIndex + 1];
-            }
-            else
-            {
-                prevCDNInfo = sorted[currentIndex];
-                // fallback to base version
-                prevCDNInfo.currentVersion = prevCDNInfo.baseVersion;
-            }           
-            if (prevCDNInfo == null)
-            {
-                Log.Warn($"Unable to determine previous version automatically for {version}.");
-                return prevConfig;
-            }
-            
-            Log.Info($"Found previous version {prevCDNInfo.currentVersion}");
-            prevConfig.baseIndex = prevCDNInfo.baseUrl;
-            prevConfig.region = prevCDNInfo.server.ToString();
-            prevConfig.platform = prevCDNInfo.platform.ToString();
-            prevConfig.version = prevCDNInfo.currentVersion;
+            prevCDNInfo = sorted[currentIndex];
+            prevCDNInfo.currentVersion = prevCDNInfo.baseVersion;
         }
-        return prevConfig;
+
+        if (string.IsNullOrEmpty(prevCDNInfo.baseUrl))
+            Log.Warn($"Previous CDN info for {prevCDNInfo.currentVersion} has no baseUrl.");
+
+        Log.Info($"Found previous version {prevCDNInfo.currentVersion}");
+        return FromCDNInfo(prevCDNInfo);
     }
 
-    public void DumpPreviousDescJson(string? previousVersion = null)
+    public static CDNConfig FromCDNInfo(CDNInfo info)
     {
-        Console.WriteLine($"DumpPreviousDescJson Previous: {previousVersion}");
-        CDNConfig prevConfig = GetPreviousConfig(previousVersion);
-        if (string.IsNullOrEmpty(prevConfig.version))
+        return new CDNConfig
+        {
+            baseIndex = info.baseUrl,
+            region = info.server.ToString(),
+            platform = info.platform.ToString(),
+            version = info.currentVersion
+        };
+    }
+
+
+    public void DumpPreviousDescJson(string? ipreviousVersion = null)
+    {
+        
+        CDNConfig prevConfig = GetPreviousConfig(ipreviousVersion);
+        Console.WriteLine($"PREVIOUS: {prevConfig.version}");
+        if (string.IsNullOrEmpty(prevConfig.version))   
         {
             Log.Warn("No previous version info found, skipping description json dump.");
             return;
         }
         
-        DumpHotFixBin(prevConfig.GetHotfixBin(), previousVersion);
-        prevManifest =  ParseManifest(Path.Combine(outputDir, "metadata", $"{previousVersion}.json"));
+        DumpHotFixBin(prevConfig.GetHotfixBin(), ipreviousVersion);
+        string descJson = Path.Combine(outputDir, "metadata", $"{ipreviousVersion}.json");
+        Log.Info($"JSOOOOOON: {descJson}");
+        prevManifest =  ParseManifest(descJson);
     }
 }

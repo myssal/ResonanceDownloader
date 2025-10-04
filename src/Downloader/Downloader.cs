@@ -255,11 +255,11 @@ public partial class Downloader
         {
             Log.Warn($"Manifest file {manifestJson} not found.");
             return new DescManifest();
-        }
-            
+        }  
         string content = File.ReadAllText(manifestJson);
+        
         var dumpManifest = JsonConvert.DeserializeObject<DescManifest>(content);
-        Log.Info($"Manifest parsed, total files: {manifest.Files.Count}");
+        Log.Info($"Manifest parsed, total files: {dumpManifest.Files.Count}");
         return dumpManifest;
     }
     /// <summary>

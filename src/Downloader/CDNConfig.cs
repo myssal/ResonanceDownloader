@@ -61,6 +61,12 @@ public class CDNConfig
     public string GetBaseUrl() => $"{baseIndex}/{region}/{platform}/{version}";
 
     public string GetHotfixBin() => $"{GetBaseUrl()}/desc.bin";
+    
+    public static CDNConfig Invalid(string reason)
+    {
+        Log.Warn($"Returning invalid CDNConfig: {reason}");
+        return new CDNConfig { version = "Invalid", baseIndex = string.Empty, region = "N/A", platform = "N/A" };
+    }
 }
 
 public class IndexReleaseInfo
