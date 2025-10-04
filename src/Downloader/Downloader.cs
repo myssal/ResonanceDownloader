@@ -6,21 +6,31 @@ using JabParser = ResonanceTools.JABParser.Program;
 using StudioCLI = AssetStudio.CLI.Program;
 namespace ResonanceDownloader.Downloader;
 
-public class Downloader
+public partial class Downloader
 {
     private CDNConfig cdnCfg { get; set; }
     private string baseUrl = "";
     private string region = "";
     private string platform = "";
-    private string version { get; set; }
+    private string version { get; set; } = "";
+    private string prevVersion { get; set; } = "";
     private string outputDir { get; set; } = "";
     private bool downloadCompressedJab { get; set; }
     private List<(string, string)> downloadList {get; set;}
     private DescManifest manifest { get; set; } = new();
+    private DescManifest prevManifest { get; set; } = new();
     private PathConfig pathConfig { get; set; } = new(new List<string>(), new List<string>());
+    private List<CDNInfo> matchedCDNInfos { get; set; } = new(); 
     
-    public Downloader(string filterFile, bool downloadCompressedJab, string? outputDir = null, string? version = null, 
-        string? presetName = null, string? region = null, string? platform = null)
+    public Downloader(
+        string filterFile,
+        bool downloadCompressedJab,
+        string? previousVersionCompare = null,
+        string? outputDir = null,
+        string? version = null, 
+        string? presetName = null,
+        string? region = null,
+        string? platform = null)
     {
         if (string.IsNullOrWhiteSpace(filterFile))
             filterFile = "filters.json";
@@ -28,7 +38,7 @@ public class Downloader
         string indexReleaseBTemp = "";
         this.platform = platform;
         this.region = region;
-
+        
         if (string.IsNullOrEmpty(version))
         {
             Log.Info("No version is provided, fetching version...");
@@ -56,7 +66,13 @@ public class Downloader
             Directory.CreateDirectory(metadataPath);
             File.Move(indexReleaseBTemp, $"{metadataPath}/index_ReleaseB.txt", true);
         }
-            
+        
+        Log.Info($"Current version: {this.version}");
+        if (previousVersionCompare != null)
+        {
+            prevVersion = previousVersionCompare;
+            DumpPreviousDescJson(previousVersionCompare);
+        }
 
         cdnCfg = new CDNConfig(baseUrl, this.region, this.platform, this.version);
 
@@ -93,12 +109,12 @@ public class Downloader
     public void AssetDownload()
     {
         DumpHotFixBin();
-        ParseManifest(Path.Combine(outputDir, "metadata", "desc.json"));
-        downloadList = GetDownloadFileList(pathConfig.Includes, pathConfig.Excludes, downloadCompressedJab);
-        Directories.CreateDownloadSubFolder(downloadList);
-        DownloadAssets(downloadList);
-        JabToBundle();
-        ExtractAsset();
+        manifest = ParseManifest(Path.Combine(outputDir, "metadata", "desc.json"));
+        // downloadList = GetDownloadFileList(pathConfig.Includes, pathConfig.Excludes, downloadCompressedJab);
+        // Directories.CreateDownloadSubFolder(downloadList);
+        // DownloadAssets(downloadList);
+        // JabToBundle();
+        // ExtractAsset();
     }
     
     /// <summary>
@@ -106,7 +122,7 @@ public class Downloader
     /// </summary>
     private void LogInfo()
     {
-        Log.Info("CDN configuration");
+        Log.Info("CDN configuration:");
         Log.Info($"Base url: {baseUrl}");
         Log.Info($"Region: {region}");
         Log.Info($"Platform: {platform}");
@@ -116,23 +132,26 @@ public class Downloader
     /// <summary>
     /// Fetch and dump desc.bin from hotfix server
     /// </summary>
-    private void DumpHotFixBin()
+    private void DumpHotFixBin(string hotfixBin = "", string descriptorFileName = "desc")
     {
         DirectoryInfo metadata = new DirectoryInfo(Path.Combine(outputDir, "metadata"));
         metadata.Create();
-        string hotfixBin = cdnCfg.GetHotfixBin();
+        
+        if(string.IsNullOrEmpty(hotfixBin))
+            hotfixBin = cdnCfg.GetHotfixBin();
 
         Log.Info("Downloading hotfix...");
         Log.Info($"Getting hotfix binary from {hotfixBin}");
-
-        bool success = HttpRequest.DownloadFile(hotfixBin, $"{metadata.FullName}/desc.bin");
+        
+        string descBinaryPath = Path.Combine(metadata.FullName, $"{descriptorFileName}.bin");
+        string descJsonPath = Path.Combine(metadata.FullName, $"{descriptorFileName}.json");
+        bool success = HttpRequest.DownloadFile(hotfixBin, descBinaryPath);
 
         if (success)
         {
-            HotfixParser.HotfixWrap($"{metadata.FullName}/desc.bin", $"{metadata.FullName}/desc.json");
-            File.Delete($"{metadata.FullName}/desc.bin");
+            HotfixParser.HotfixWrap(descBinaryPath, descJsonPath);
+            File.Delete(descBinaryPath);
         }
-            
         else
         {
             Log.Warn($"Failed to get hotfix binary from {hotfixBin}");
@@ -158,7 +177,7 @@ public class Downloader
         
         if (success)
         {
-            CDNInfo matchedCdnInfo = new CDNInfo();
+            CDNInfo? matchedCdnInfo = null;
             Log.Info($"Processing cdn info...");
             var cdnContent = File.ReadAllLines(tempIndexReleaseB);
             IndexReleaseInfo idxRelease = new IndexReleaseInfo(cdnContent);
@@ -166,30 +185,38 @@ public class Downloader
             // filter index that matches the platform
             var matchedCdn = idxRelease.cdnInfos.Where(x => x.platform == pplatform);
             
+            if (matchedCdn.Count() == 0)
+            {
+                Log.Warn($"No matching platform found for {platform}, use default platform PC.");
+                matchedCdn = idxRelease.cdnInfos.Where(x => x.platform == Platform.StandaloneWindows64);
+                
+            }
+            
+            // save matched platform cdn info for modification filter
+            matchedCDNInfos = matchedCdn.ToList();
             // filter based on version if provided else get highest version of the platform
             if (!string.IsNullOrEmpty(iversion))
             {
                 var versionedCdn = matchedCdn.Where(x => x.currentVersion == iversion).FirstOrDefault();
                 if (versionedCdn != null)
                 {
+                    Log.Info($"Found matching cdn config for provided version {iversion}");
                     matchedCdnInfo = versionedCdn;
+                }
+                else
+                {
+                    Log.Info($"No matching cdn config for provided version {iversion}, using lastest version...");
+                    matchedCdnInfo = GetLastestVersion(matchedCdn.ToList());
                 }
             }
             else
             {
-                // pick highest version
-                matchedCdnInfo = matchedCdn
-                    .Where(x => EnumParser.ParseVersion(x.currentVersion, out _))   // only valid versions
-                    .OrderByDescending(x =>
-                    {
-                        EnumParser.ParseVersion(x.currentVersion, out var v);
-                        return v;
-                    })
-                    .FirstOrDefault();
+                matchedCdnInfo = GetLastestVersion(matchedCdn.ToList());
             }
             
             if (matchedCdnInfo != null)
             {
+                Log.Info("Cdn info found:");
                 baseUrl = matchedCdnInfo.baseUrl;
                 region = matchedCdnInfo.server.ToString();
                 this.platform = platform;
@@ -202,21 +229,38 @@ public class Downloader
         }
         return tempIndexReleaseB;
     }
+
+    public CDNInfo GetLastestVersion(List<CDNInfo> cdnInfos)
+    {
+        CDNInfo matchedCdnInfo = new CDNInfo();
+        // pick highest version
+        matchedCdnInfo = cdnInfos
+            .Where(x => EnumParser.ParseVersion(x.currentVersion, out _))   // only valid versions
+            .OrderByDescending(x =>
+            {
+                EnumParser.ParseVersion(x.currentVersion, out var v);
+                return v;
+            })
+            .FirstOrDefault();
+        return matchedCdnInfo;
+    }
     
     /// <summary>
     /// Parsing desc.json to get manifest
     /// </summary>
     /// <param name="manifestJson">Path to dumped desc.json</param>
-    private void ParseManifest(string manifestJson)
+    private DescManifest ParseManifest(string manifestJson)
     {
         if (!File.Exists(manifestJson))
-            Log.Warn($"Manifest file {manifestJson} not found.");
-        else
         {
-            string content = File.ReadAllText(manifestJson);
-            manifest = JsonConvert.DeserializeObject<DescManifest>(content);
-            Log.Info($"Manifest parsed, total files: {manifest.Files.Count}");
+            Log.Warn($"Manifest file {manifestJson} not found.");
+            return new DescManifest();
         }
+            
+        string content = File.ReadAllText(manifestJson);
+        var dumpManifest = JsonConvert.DeserializeObject<DescManifest>(content);
+        Log.Info($"Manifest parsed, total files: {manifest.Files.Count}");
+        return dumpManifest;
     }
     /// <summary>
     /// Get assets list to download, based on exclude and include filter. Compressed jabs are not included by default.
