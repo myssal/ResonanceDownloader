@@ -9,11 +9,8 @@ namespace ResonanceDownloader.Downloader;
 public partial class Downloader
 {
     private CDNConfig cdnCfg { get; set; }
-    private string baseUrl = "";
-    private string region = "";
-    private string platform = "";
-    private string version { get; set; } = "";
-    private string prevVersion { get; set; } = "";
+    private CDNInfo cdnInfo { get; set; } = new();
+    private bool compareToBase { get; set; } = false;
     private string outputDir { get; set; } = "";
     private bool downloadCompressedJab { get; set; }
     private List<(string, string)> downloadList {get; set;}
@@ -25,7 +22,7 @@ public partial class Downloader
     public Downloader(
         string filterFile,
         bool downloadCompressedJab,
-        string? previousVersionCompare = null,
+        bool compareToBase = false,
         string? outputDir = null,
         string? version = null, 
         string? presetName = null,
@@ -36,18 +33,16 @@ public partial class Downloader
             filterFile = "filters.json";
         
         string indexReleaseBTemp = "";
-        this.platform = platform;
-        this.region = region;
         
         if (string.IsNullOrEmpty(version))
         {
             Log.Info("No version is provided, fetching version...");
-            indexReleaseBTemp = GetConfig(this.region, this.platform);
+            indexReleaseBTemp = GetConfig(region, platform);
         }
         else
         {
             Log.Info($"Set version to {version}, fetching config...");
-            indexReleaseBTemp = GetConfig(this.region, this.platform, version);
+            indexReleaseBTemp = GetConfig(region, platform, version);
         }
         
         
@@ -55,10 +50,11 @@ public partial class Downloader
         if (string.IsNullOrWhiteSpace(outputDir))
             outputDir = Directory.GetCurrentDirectory();
         
-        string verDir = Path.Combine(outputDir, "download", $"{this.region}_{this.platform}",this.version);
+        string verDir = Path.Combine(outputDir, "download", $"{region}_{platform}",cdnInfo.currentVersion);
         DirectoryInfo directoryInfo = new DirectoryInfo(verDir);
         directoryInfo.Create();
         this.outputDir = verDir;
+        this.compareToBase = compareToBase;
         Directories.Clear(this.outputDir);
         if (!string.IsNullOrEmpty(indexReleaseBTemp))
         {
@@ -67,15 +63,17 @@ public partial class Downloader
             File.Move(indexReleaseBTemp, $"{metadataPath}/index_ReleaseB.txt", true);
         }
         
-        Log.Info($"Current version: {this.version}");
-        if (previousVersionCompare != null)
-        {
-            prevVersion = previousVersionCompare;
-            DumpPreviousDescJson(previousVersionCompare);
-        }
+        Log.Info($"Current version: {cdnInfo.currentVersion}");
+        
 
-        cdnCfg = new CDNConfig(baseUrl, this.region, this.platform, this.version);
-
+        cdnCfg = new CDNConfig(
+            cdnInfo.baseUrl,
+            cdnInfo.server.ToString(),
+            cdnInfo.platform.ToString(), 
+            cdnInfo.currentVersion);
+        
+        
+        
         if (!string.IsNullOrEmpty(filterFile))
         {
             string path = filterFile;
@@ -110,6 +108,11 @@ public partial class Downloader
     {
         DumpHotFixBin();
         manifest = ParseManifest(Path.Combine(outputDir, "metadata", "desc.json"));
+        if (compareToBase)
+        {
+            Log.Info($"Dumping base desc binary...");
+            DumpBaseDescJson();
+        }
         // downloadList = GetDownloadFileList(pathConfig.Includes, pathConfig.Excludes, downloadCompressedJab);
         // Directories.CreateDownloadSubFolder(downloadList);
         // DownloadAssets(downloadList);
@@ -123,10 +126,10 @@ public partial class Downloader
     private void LogInfo()
     {
         Log.Info("CDN configuration:");
-        Log.Info($"Base url: {baseUrl}");
-        Log.Info($"Region: {region}");
-        Log.Info($"Platform: {platform}");
-        Log.Info($"Version: {version}");
+        Log.Info($"Base url: {cdnInfo.baseUrl}");
+        Log.Info($"Region: {cdnInfo.server.ToString()}");
+        Log.Info($"Platform: {cdnInfo.platform.ToString()}");
+        Log.Info($"Version: {cdnInfo.currentVersion}");
     }
     
     /// <summary>
@@ -217,10 +220,11 @@ public partial class Downloader
             if (matchedCdnInfo != null)
             {
                 Log.Info("Cdn info found:");
-                baseUrl = matchedCdnInfo.baseUrl;
-                region = matchedCdnInfo.server.ToString();
-                this.platform = platform;
-                version = matchedCdnInfo.currentVersion;
+                cdnInfo.baseUrl = matchedCdnInfo.baseUrl;
+                cdnInfo.server = matchedCdnInfo.server;
+                cdnInfo.platform = EnumParser.ParsePlatform(platform);
+                cdnInfo.currentVersion = matchedCdnInfo.currentVersion;
+                cdnInfo.baseVersion = matchedCdnInfo.baseVersion;
             }
             else
             {

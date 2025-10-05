@@ -9,7 +9,7 @@ public class AppOptions
         public string Output { get; set; } = "";
         public string Version { get; set; } = "";
         public string FilterFile { get; set; } = "";
-        public string PreviousVersionCompare { get; set; } = "";
+        public bool CompareToBase { get; set; } = false;
         public string PresetName { get; set; } = "";
         public bool DownloadCompressedJab { get; set; } = false;
         public string Region { get; set; } = "ReleaseB_CN";
@@ -22,7 +22,7 @@ public class AppOptions
         private readonly Option<string> _outputPathOption;
         private readonly Option<string> _versionOption;
         private readonly Option<string> _filterFileOption;
-        private readonly Option<string> _previousVersionCompareOption;
+        private readonly Option<bool> _compareToBaseOption;
         private readonly Option<string> _presetNameOption;
         private readonly Option<bool> _downloadCompressedJabOption;
         private readonly Option<string> _regionOption;
@@ -33,7 +33,7 @@ public class AppOptions
             Option<string> outputPathOption,
             Option<string> versionOption,
             Option<string> filterFileOption,
-            Option<string> previousVersionCompareOption,
+            Option<bool> compareToBaseOption,
             Option<string> presetNameOption,
             Option<bool> downloadCompressedJabOption,
             Option<string> regionOption,
@@ -43,7 +43,7 @@ public class AppOptions
             _outputPathOption = outputPathOption;
             _versionOption = versionOption;
             _filterFileOption = filterFileOption;
-            _previousVersionCompareOption = previousVersionCompareOption;
+            _compareToBaseOption = compareToBaseOption;
             _presetNameOption = presetNameOption;
             _downloadCompressedJabOption = downloadCompressedJabOption;
             _regionOption = regionOption;
@@ -53,28 +53,13 @@ public class AppOptions
 
         protected override AppOptions GetBoundValue(BindingContext context)
         {
-            var result = context.ParseResult;
-
-            string? pvcValue = null;
-
-            if (result.HasOption(_previousVersionCompareOption))
-            {
-                pvcValue = result.GetValueForOption(_previousVersionCompareOption);
-
-                // handle 3 cases for --previous-version-compare option:
-                // if use -pvc [version], pass that version to class
-                // if use -pvc alone, still pass to class and automatic determine later
-                // no -pvc use, do not compare version
-                if (pvcValue is null)
-                    pvcValue = ""; 
-            }
             
             return new AppOptions
             {
                 Output = context.ParseResult.GetValueForOption(_outputPathOption) ?? "",
                 Version = context.ParseResult.GetValueForOption(_versionOption) ?? "",
                 FilterFile = context.ParseResult.GetValueForOption(_filterFileOption) ?? "filters.json",
-                PreviousVersionCompare = pvcValue,
+                CompareToBase = context.ParseResult.GetValueForOption(_compareToBaseOption),
                 PresetName = context.ParseResult.GetValueForOption(_presetNameOption) ?? "",
                 DownloadCompressedJab = context.ParseResult.GetValueForOption(_downloadCompressedJabOption),
                 Region = context.ParseResult.GetValueForOption(_regionOption) ?? "ReleaseB_CN",

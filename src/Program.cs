@@ -24,13 +24,14 @@ class Program
         };
         filterFileOption.AddAlias("-f");
 
-        var previousVersionCompareOption = new Option<string>(
-            "--previous-version-compare",
+        var compareToBaseOption = new Option<bool>(
+            "--compare-to-base",
             "Filter updated asset bundles from previous versions. Specify previous version or use option with empty argument to use second most lastest game version patch.")
         {
             Arity = ArgumentArity.ZeroOrOne
         };
-        previousVersionCompareOption.AddAlias("-pvc");
+        compareToBaseOption.AddAlias("-ctb");
+        compareToBaseOption.SetDefaultValue(false);
 
         var presetNameOption = new Option<string>(
             "--preset", 
@@ -67,7 +68,7 @@ class Program
         rootCommand.AddOption(outputPathOption);
         rootCommand.AddOption(versionOption);
         rootCommand.AddOption(filterFileOption);
-        rootCommand.AddOption(previousVersionCompareOption);
+        rootCommand.AddOption(compareToBaseOption);
         rootCommand.AddOption(presetNameOption);
         rootCommand.AddOption(downloadCompressedJabOption);
         rootCommand.AddOption(regionOption);
@@ -75,7 +76,7 @@ class Program
         rootCommand.AddOption(platformOption);
         
         var binder = new AppOptionsBinder(
-            outputPathOption, versionOption, filterFileOption, previousVersionCompareOption,
+            outputPathOption, versionOption, filterFileOption, compareToBaseOption,
             presetNameOption, downloadCompressedJabOption, regionOption, serverInfoOption, platformOption);
 
         rootCommand.SetHandler((opts) => RunApp(opts), binder);
@@ -94,7 +95,7 @@ class Program
         var downloader = new Downloader.Downloader(
             opts.FilterFile,
             opts.DownloadCompressedJab,
-            opts.PreviousVersionCompare,
+            opts.CompareToBase,
             opts.Output,
             opts.Version,
             opts.PresetName,
