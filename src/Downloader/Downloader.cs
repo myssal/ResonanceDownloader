@@ -19,6 +19,8 @@ public partial class Downloader
     private PathConfig pathConfig { get; set; } = new(new List<string>(), new List<string>());
     private List<CDNInfo> matchedCDNInfos { get; set; } = new(); 
     
+    private ArgInput argInput { get; set; }
+    
     public Downloader(
         string filterFile,
         bool downloadCompressedJab,
@@ -29,32 +31,37 @@ public partial class Downloader
         string? region = null,
         string? platform = null)
     {
-        if (string.IsNullOrWhiteSpace(filterFile))
-            filterFile = "filters.json";
+        argInput = new ArgInput(filterFile, downloadCompressedJab, compareToBase, outputDir, version, presetName, region, platform);
+    }
+
+    public async Task InitializeMetadata()
+    {
+        if (string.IsNullOrWhiteSpace(argInput.filterFile))
+            argInput.filterFile = "filters.json";
         
         string indexReleaseBTemp = "";
         
-        if (string.IsNullOrEmpty(version))
+        if (string.IsNullOrEmpty(argInput.version))
         {
             Log.Info("No version is provided, fetching version...");
-            indexReleaseBTemp = GetConfig(region, platform);
+            indexReleaseBTemp = await GetConfig(argInput.region, argInput.platform);
         }
         else
         {
-            Log.Info($"Set version to {version}, fetching config...");
-            indexReleaseBTemp = GetConfig(region, platform, version);
+            Log.Info($"Set version to {argInput.version}, fetching config...");
+            indexReleaseBTemp = await GetConfig(argInput.region, argInput.platform, argInput.version);
         }
-        
+            
         
         // set default folder to outputDir/version right here
         if (string.IsNullOrWhiteSpace(outputDir))
             outputDir = Directory.GetCurrentDirectory();
         
-        string verDir = Path.Combine(outputDir, "download", $"{region}_{platform}",cdnInfo.currentVersion);
+        string verDir = Path.Combine(outputDir, "download", $"{argInput.region}_{argInput.platform}",cdnInfo.currentVersion);
         DirectoryInfo directoryInfo = new DirectoryInfo(verDir);
         directoryInfo.Create();
-        this.outputDir = verDir;
-        this.compareToBase = compareToBase;
+        outputDir = verDir;
+        compareToBase = argInput.compareToBase;
         Directories.Clear(this.outputDir);
         if (!string.IsNullOrEmpty(indexReleaseBTemp))
         {
@@ -74,16 +81,16 @@ public partial class Downloader
         
         
         
-        if (!string.IsNullOrEmpty(filterFile))
+        if (!string.IsNullOrEmpty(argInput.filterFile))
         {
-            string path = filterFile;
+            string path = argInput.filterFile;
             PathPresets pathPresets = new PathPresets();
             pathPresets.Load(path);
             Log.Info($"Loading filter presets from: {path}");
-            if (!string.IsNullOrEmpty(presetName))
+            if (!string.IsNullOrEmpty(argInput.presetName))
             {
-                Log.Info($"Preset filter loaded: {presetName}");
-                pathConfig = pathPresets.Get(presetName);
+                Log.Info($"Preset filter loaded: {argInput.presetName}");
+                pathConfig = pathPresets.Get(argInput.presetName);
             }
             else
             {
@@ -99,25 +106,26 @@ public partial class Downloader
             }
         }
         
-        this.downloadCompressedJab = downloadCompressedJab;
+        downloadCompressedJab = argInput.downloadCompressedJab;
 
         LogInfo();
     }
-
-    public void AssetDownload()
+    
+    public async Task AssetDownload()
     {
-        DumpHotFixBin();
+        await DumpHotFixBin();
         manifest = ParseManifest(Path.Combine(outputDir, "metadata", "desc.json"));
         if (compareToBase)
         {
             Log.Info($"Dumping base desc binary...");
             DumpBaseDescJson();
+            GenerateDiff(prevManifest, manifest);
         }
-        // downloadList = GetDownloadFileList(pathConfig.Includes, pathConfig.Excludes, downloadCompressedJab);
-        // Directories.CreateDownloadSubFolder(downloadList);
-        // DownloadAssets(downloadList);
-        // JabToBundle();
-        // ExtractAsset();
+        downloadList = GetDownloadFileList(pathConfig.Includes, pathConfig.Excludes, downloadCompressedJab);
+        Directories.CreateDownloadSubFolder(downloadList);
+        await DownloadAssetsAsync(downloadList);
+        JabToBundle();
+        ExtractAsset();
     }
     
     /// <summary>
@@ -135,7 +143,7 @@ public partial class Downloader
     /// <summary>
     /// Fetch and dump desc.bin from hotfix server
     /// </summary>
-    private void DumpHotFixBin(string hotfixBin = "", string descriptorFileName = "desc")
+    private async Task DumpHotFixBin(string hotfixBin = "", string descriptorFileName = "desc")
     {
         DirectoryInfo metadata = new DirectoryInfo(Path.Combine(outputDir, "metadata"));
         metadata.Create();
@@ -148,7 +156,7 @@ public partial class Downloader
         
         string descBinaryPath = Path.Combine(metadata.FullName, $"{descriptorFileName}.bin");
         string descJsonPath = Path.Combine(metadata.FullName, $"{descriptorFileName}.json");
-        bool success = HttpRequest.DownloadFile(hotfixBin, descBinaryPath);
+        bool success = await DownloadRequest.DownloadFileAsync(hotfixBin, descBinaryPath);
 
         if (success)
         {
@@ -168,7 +176,7 @@ public partial class Downloader
     /// <param name="platform">Game platform</param>
     /// <param name="iversion">Game version</param>
     /// <returns>Temp location of index release file.</returns>
-    private string GetConfig(string currentRegion, string platform, string? iversion = null)
+    private async Task<string> GetConfig(string currentRegion, string platform, string? iversion = null)
     {
         
         string indexUrl = IndexUrls.GetIndexUrl(currentRegion);
@@ -176,7 +184,7 @@ public partial class Downloader
         Platform pplatform = EnumParser.ParsePlatform(platform);
         
         Log.Info($"Downloading index file from {indexUrl}");
-        bool success = HttpRequest.DownloadFile(indexUrl, tempIndexReleaseB);
+        bool success = await DownloadRequest.DownloadFileAsync(indexUrl, tempIndexReleaseB);
         
         if (success)
         {
@@ -325,23 +333,33 @@ public partial class Downloader
     /// Download assets from given download list
     /// </summary>
     /// <param name="downloadList"></param>
-    private void DownloadAssets(List<(string, string)> downloadList)
+    private async Task DownloadAssetsAsync(List<(string url, string filePath)> downloadList)
     {
         Log.Info($"Downloading {downloadList.Count} assets...");
-        var failedDownloads = HttpRequest.DownloadFilesParallel(downloadList, 4, 3);
 
+        // Run all downloads in parallel using the new DownloadRequest class
+        var failedDownloads = await DownloadRequest.DownloadFilesParallelAsync(
+            downloadList,
+            maxDegreeOfParallelism: 4,
+            maxRetries: 3
+        );
+
+        // Write progress file
         string progressFilePath = Path.Combine(outputDir, "metadata", "progress.txt");
-        using (StreamWriter writer = new StreamWriter(progressFilePath))
+        Directory.CreateDirectory(Path.GetDirectoryName(progressFilePath)!);
+
+        await using (var writer = new StreamWriter(progressFilePath, false))
         {
             foreach (var (url, filePath) in downloadList)
             {
                 string status = failedDownloads.Contains(url) ? "failed" : "downloaded";
-                writer.WriteLine($"{filePath}: {status}");
+                await writer.WriteLineAsync($"{filePath}: {status}");
             }
         }
 
-        Log.Info($"Download progress saved to {progressFilePath}");
+        Log.Info($"Download complete. Success: {downloadList.Count - failedDownloads.Count}, Failed: {failedDownloads.Count}");
     }
+
 
     /// <summary>
     /// Parse asset bundle from jab files
@@ -428,6 +446,38 @@ public partial class Downloader
         ByContainer,
         BySource,
         None
+    }
+}
+
+public class ArgInput
+{
+    public string filterFile { get; set; } 
+    public string? version { get; set; }
+    public string? presetName { get; set; }
+    public string? region { get; set; }
+    public string? platform { get; set; }
+    public string outputDir { get; set; } 
+    public bool downloadCompressedJab { get; set; } 
+    public bool compareToBase { get; set; } 
+    
+    public ArgInput(
+        string filterFile,
+        bool downloadCompressedJab,
+        bool compareToBase = false,
+        string? outputDir = null,
+        string? version = null,
+        string? presetName = null,
+        string? region = null,
+        string? platform = null)
+    {
+        this.filterFile = filterFile;
+        this.downloadCompressedJab = downloadCompressedJab;
+        this.compareToBase = compareToBase;
+        this.outputDir = outputDir;
+        this.version = version;
+        this.presetName = presetName;
+        this.region = region;
+        this.platform = platform;
     }
 }
 

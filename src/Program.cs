@@ -14,7 +14,7 @@ class Program
         var versionOption = new Option<string>(
             "--game-version",
             "Specify game version. If not set, version will be fetched from server.");
-        versionOption.AddAlias("-gv");
+        versionOption.AddAlias("-ver");
 
         var filterFileOption = new Option<string>(
             "--filter-file",
@@ -30,13 +30,11 @@ class Program
         {
             Arity = ArgumentArity.ZeroOrOne
         };
-        compareToBaseOption.AddAlias("-ctb");
         compareToBaseOption.SetDefaultValue(false);
 
         var presetNameOption = new Option<string>(
             "--preset", 
             "Specify which preset filter to use from filter file.");
-        presetNameOption.AddAlias("-pr");
 
         var downloadCompressedJabOption = new Option<bool>(
             "--download-compressed-jab",
@@ -59,7 +57,6 @@ class Program
         var serverInfoOption = new Option<bool>(
             "--server-info",
             "Show server and platform info list.");
-        serverInfoOption.AddAlias("-svi");
 
         // Root command
         var rootCommand = new RootCommand("Resonance Solstice Assets Downloader");
@@ -84,7 +81,7 @@ class Program
         await rootCommand.InvokeAsync(args);
     }
     
-    static void RunApp(AppOptions opts)
+    static async Task RunApp(AppOptions opts)
     {
         if (opts.ServerInfo)
         {
@@ -101,8 +98,8 @@ class Program
             opts.PresetName,
             opts.Region,
             opts.Platform);
-
-        downloader.AssetDownload();
+        await downloader.InitializeMetadata();
+        await downloader.AssetDownload();
     }
     
 
