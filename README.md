@@ -14,20 +14,19 @@ Usage:
   ResonanceDownloader [options]
 
 Options:
-  -o, --output <output>               Specify output folder for download contents.
-  -gv, --game-version <game-version>  Specify game version. If not set, the version will be fetched from server.
-  -f, --filter-file <filter-file>     Specify filter json file path. If specify with no input, default input will be
-                                      filters.json.
-  -pr, --preset <preset>              Specify which preset filter to use from filter file. Only valid if --filter-file
-                                      or -f is specified.
-  -cjab, --download-compressed-jab    Specify to download compressed jab files or not. [default: False]
-  -r, --region <region>               Specify server region and type. Default is CN Release. For full server option,
-                                      use --server-info or -svi. [default: ReleaseB_CN]
-  -svi, --server-info                 Servers info list.
-  -p, --platform <platform>           Specify platform. Default is PC (StandaloneWindows64). For full platform option,
-                                      use --server-info or -svi. [default: StandaloneWindows64]
-  --version                           Show version information
-  -?, -h, --help                      Show help and usage information
+  -o, --output <output>                Specify output folder for download contents.
+  -ver, --game-version <game-version>  Specify game version. If not set, version will be fetched from server.
+  -f, --filter-file <filter-file>      Specify filter JSON file path. If omitted, defaults to filters.json.
+  --compare-to-base                    Filter updated asset bundles from previous versions. Specify previous version or
+                                       use option with empty argument to use second most lastest game version patch.
+                                       [default: False]
+  --preset <preset>                    Specify which preset filter to use from filter file.
+  -cjab, --download-compressed-jab     Download compressed JAB files. [default: False]
+  -r, --region <region>                Specify server region (default: ReleaseB_CN). [default: ReleaseB_CN]
+  --server-info                        Show server and platform info list.
+  -p, --platform <platform>            Specify platform (default: StandaloneWindows64). [default: StandaloneWindows64]
+  --version                            Show version information
+  -?, -h, --help                       Show help and usage information
 ```
 
 **Server options:**
@@ -57,7 +56,7 @@ Available Platforms
 ```
 ## To do:
 - Improve filter.
-- Improve download bundle speed.
+- ~~Improve download bundle speed.~~
 ## Output structure:
 ```
 root folder 
