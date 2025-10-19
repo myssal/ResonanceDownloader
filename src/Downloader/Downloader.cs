@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Newtonsoft.Json;
 using ResonanceDownloader.Utils;
 using ResonanceTools.Utility;
@@ -17,8 +18,10 @@ public partial class Downloader
     private DescManifest manifest { get; set; } = new();
     private DescManifest prevManifest { get; set; } = new();
     private PathConfig pathConfig { get; set; } = new(new List<string>(), new List<string>());
-    private List<CDNInfo> matchedCDNInfos { get; set; } = new(); 
-    
+    private List<CDNInfo> matchedCDNInfos { get; set; } = new();
+
+    private string url;
+    private string dl;
     private ArgInput argInput { get; set; }
     
     public Downloader(
@@ -156,7 +159,8 @@ public partial class Downloader
         
         string descBinaryPath = Path.Combine(metadata.FullName, $"{descriptorFileName}.bin");
         string descJsonPath = Path.Combine(metadata.FullName, $"{descriptorFileName}.json");
-        bool success = await DownloadRequest.DownloadFileAsync(hotfixBin, descBinaryPath);
+        bool success;
+        (success, url, dl) = await DownloadRequest.DownloadFileAsync(hotfixBin, descBinaryPath);
 
         if (success)
         {
@@ -184,7 +188,8 @@ public partial class Downloader
         Platform pplatform = EnumParser.ParsePlatform(platform);
         
         Log.Info($"Downloading index file from {indexUrl}");
-        bool success = await DownloadRequest.DownloadFileAsync(indexUrl, tempIndexReleaseB);
+        bool success;
+        (success, url, dl) = await DownloadRequest.DownloadFileAsync(indexUrl, tempIndexReleaseB);
         
         if (success)
         {
@@ -336,28 +341,35 @@ public partial class Downloader
     private async Task DownloadAssetsAsync(List<(string url, string filePath)> downloadList)
     {
         Log.Info($"Downloading {downloadList.Count} assets...");
-
-        // Run all downloads in parallel using the new DownloadRequest class
-        var failedDownloads = await DownloadRequest.DownloadFilesParallelAsync(
-            downloadList,
-            maxDegreeOfParallelism: 4,
-            maxRetries: 3
-        );
-
+        List<string> log = new List<string>();
+        var downloadLogs = new ConcurrentBag<string>();
+        int failedCount = 0;
+        
+        var downloadTasks = downloadList.Select(async asset =>
+        {
+            try
+            {
+                bool success;
+                string uri, dlPath;
+                (success, uri, dlPath) = await DownloadRequest.DownloadFileAsync(asset.url, asset.filePath);
+                var status = success == true ? "success" : "failed";
+                downloadLogs.Add($"{uri} -> {dlPath}: {status}");
+                Interlocked.Increment(ref failedCount);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Failed to download {asset.url}: /n{ex}");
+                downloadLogs.Add($"{asset.url} -> {asset.filePath}: failed");
+                Interlocked.Increment(ref failedCount);
+            }
+        });
         // Write progress file
         string progressFilePath = Path.Combine(outputDir, "metadata", "progress.txt");
         Directory.CreateDirectory(Path.GetDirectoryName(progressFilePath)!);
 
-        await using (var writer = new StreamWriter(progressFilePath, false))
-        {
-            foreach (var (url, filePath) in downloadList)
-            {
-                string status = failedDownloads.Contains(url) ? "failed" : "downloaded";
-                await writer.WriteLineAsync($"{filePath}: {status}");
-            }
-        }
-
-        Log.Info($"Download complete. Success: {downloadList.Count - failedDownloads.Count}, Failed: {failedDownloads.Count}");
+        await Task.WhenAll(downloadTasks);
+        await File.WriteAllLinesAsync(progressFilePath, downloadLogs);
+        Log.Info($"Download complete. Success: {downloadList.Count - failedCount}, Failed: {failedCount}");
     }
 
 
